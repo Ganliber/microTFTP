@@ -22,6 +22,7 @@ typedef struct {
     uint16_t opcode;// decide which kind of datagram is 
 
     union {
+
         struct {
             uint16_t opcode; /* RRQ(1) or WRQ(2) */             
             uint8_t filename_and_mode[514]; // (longest) 512 bytes + 2 bytes for '\0'
@@ -43,6 +44,7 @@ typedef struct {
             uint16_t err_code;
             uint8_t err_msg[BLOCK_LEN];
         } error;
+        
     } datagram;
 
 } tftp_dgram;
