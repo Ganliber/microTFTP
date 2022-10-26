@@ -62,8 +62,32 @@ int main(int argc, char* argv[]) {
             } else {
                 upload_file(ins);
             }
-        } else if (strcmp(ins, "get")==0 || strcmp(ins, "download")==0) {
-
+        } else if (strcmp(ins, "shell")==0) {
+            /*  
+            *   support for shell instructions
+            *   shell ls 
+            *   shell pwd
+            *   shell clear
+            *   shell echo
+            *   shell uname -r
+            *   ...
+            */ 
+            ins = strtok(NULL, " \t\n");
+            char shell[MAXLINE]; // shell instruction length
+            int index = 0;
+            while(ins!=NULL) {
+                // exec shell instructions
+                while(*ins!='\0'){
+                    shell[index] = *ins;
+                    index++;
+                    ins++;
+                }
+                shell[index] = ' ';
+                index++;
+                ins = strtok(NULL, " \t\n");
+            }
+            shell[index] = '\0';
+            system(shell);
         }
     }
     return 0;
