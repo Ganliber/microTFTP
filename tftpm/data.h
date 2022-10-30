@@ -4,6 +4,7 @@
 #define PORT 69
 #define BLOCK_LEN 512
 #define MAXLINE 512 // longest instrument in CLI
+#define DGRAM_SIZE 516
 
 /* tftp opcode mnemonic */
 enum opcode {

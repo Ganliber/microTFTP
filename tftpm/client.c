@@ -30,8 +30,6 @@ socklen_t servaddr_len;
 * For simple : 
     sendto(sockfd, buf, len, flags, NULL, 0);
 */
-
-
 int main(int argc, char* argv[]) {
 
     char command[MAXLINE]; // Input command
@@ -54,6 +52,7 @@ int main(int argc, char* argv[]) {
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(PORT);
     inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
+
 
     char *buffer, *ins;// ins is instructions
     while (1)
@@ -140,7 +139,7 @@ int upload_file(char *cli_file) {
 /// @brief 
 /// @param serv_file 
 /// @param cli_file 
-/// @return 
+/// @return err_code
 int download_file(char * serv_file) {
     tftp_dgram sendpkt, ackpkt, recvpkt;
 
@@ -173,16 +172,51 @@ int download_file(char * serv_file) {
     sendto(sockfd, &sendpkt.datagram, sizeof(sendpkt.datagram),
                     0, (struct sockaddr *)&servaddr, servaddr_len);
     
-    ackpkt.opcode = ACK;
-    ackpkt.datagram.ack.opcode = htons(ACK);
     
-    
-    
-    
-    
+    /* recvfrom:
+     * return the length of the message on successful completion.
+     */
+    int recvbytes;
+    uint16_t tmp_opcode;
+    uint16_t tmp_blocknum;
+
+    FILE *file_download;
+    file_download = fopen(serv_file, "r"); // check if it exists already, if so, cover it.
+    if (file_download == NULL) {
+        // it doesn't exist, so u need to create it.
+        file_download = fopen(serv_file, "w");
+    }
 
 
-    /*  */
- 
+
+    while(1) {
+        recvbytes = recvfrom(sockfd, &recvpkt.datagram, sizeof(recvpkt.datagram),
+                        MSG_DONTWAIT, (struct sockaddr *)&servaddr, &servaddr_len);
+
+        if (recvbytes > 0 && recvbytes < 4) {
+            printf("Bad packet recieved.\n");
+            continue;
+        } else {
+            tmp_opcode = recvpkt.datagram.data.opcode;
+            tmp_blocknum = recvpkt.datagram.data.blocknum;
+            if(tmp_opcode != DATA) {
+                printf("Not proper data packet.\n");
+                continue;
+            }       
+            if (recvbytes == DGRAM_SIZE) {
+                /* intermediate packets */
+                printf("Recieved => block# %d, size=%d ...\n", tmp_blocknum, recvbytes - 4);
+
+            } else if (recvbytes >= 4 && recvbytes < DGRAM_SIZE) {
+                /* Last packet */
+                printf("block# %d has been recieved... And it is the last block.\n", tmp_blocknum);
+            }
+
+        } 
+
+        ackpkt.opcode = ACK;
+        ackpkt.datagram.ack.opcode = htons(ACK);
+        ackpkt.datagram.ack.blocknum = tmp_blocknum;
+    }
     return 1;
 }
