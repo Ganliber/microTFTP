@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
@@ -13,10 +14,28 @@ int hint();
 int upload_file(char * cli_file);
 int download_file(char * serv_file);
 
+/* Global Variables */
+struct sockaddr_in servaddr; // server info struct
+int sockfd, mode;   // socket fd for datagram transmission
+                    // mode=1 netascii; mode=2 octet(default)
+socklen_t servaddr_len;
+
+/* About UDP & TCP*/
+// send() & recv() --> TCP
+// sendto() & recvfrom() --> UDP
+/*
+* Definition:
+    ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+                const struct sockaddr *dest_addr, socklen_t addrlen);
+* For simple : 
+    sendto(sockfd, buf, len, flags, NULL, 0);
+*/
+
 
 int main(int argc, char* argv[]) {
 
-    char command[MAXLINE];
+    char command[MAXLINE]; // Input command
+    mode = 1; // default value : octet (binary)
 
     if(argc < 2) {
         printf("Usage: %s ip [port]\n",argv[0]);
@@ -24,6 +43,17 @@ int main(int argc, char* argv[]) {
         printf("The default port is 69.\n");
         return 0;
     }
+  
+
+    sockfd = Socket(AF_INET, SOCK_DGRAM, 0); // fd recieved from socket, Socket contains error handler
+
+    //test
+    printf("The connecting ip addr is: %s\n", argv[1]);
+    
+    bzero(&servaddr, sizeof(servaddr)); 
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(PORT);
+    inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
 
     char *buffer, *ins;// ins is instructions
     while (1)
@@ -52,7 +82,7 @@ int main(int argc, char* argv[]) {
             if(ins == NULL) {
                 printf("\n\033[31m**[error : missing remote file name.]**\033[0m\n\n");
             } else {
-                //printf("%s\n", ins);
+                // printf("%s\n", ins);
                 download_file(ins);
             }
         } else if (strcmp(ins, "put")==0 || strcmp(ins, "upload")==0) {
@@ -112,6 +142,47 @@ int upload_file(char *cli_file) {
 /// @param cli_file 
 /// @return 
 int download_file(char * serv_file) {
+    tftp_dgram sendpkt, ackpkt, recvpkt;
 
+    // error
+    if(serv_file==NULL){
+        return -1;
+    }
+
+    /* RRQ Datagram */
+    sendpkt.opcode = RRQ;
+    sendpkt.datagram.request.opcode = htons(RRQ);
+
+    int i=0;
+    while (serv_file[i]!='\0') {
+        sendpkt.datagram.request.filename_and_mode[i] = serv_file[i];//?
+        i ++;
+    }
+    sendpkt.datagram.request.filename_and_mode[i++] = '\0';
+    char *modestr;
+
+    if(mode==1) modestr = "NETASCII";
+    else modestr = "OCTET";
+
+    while (*modestr!='\0') {
+        sendpkt.datagram.request.filename_and_mode[i++] = *modestr;
+        modestr++;
+    }
+    sendpkt.datagram.request.filename_and_mode[i] = '\0';
+
+    sendto(sockfd, &sendpkt.datagram, sizeof(sendpkt.datagram),
+                    0, (struct sockaddr *)&servaddr, servaddr_len);
+    
+    ackpkt.opcode = ACK;
+    ackpkt.datagram.ack.opcode = htons(ACK);
+    
+    
+    
+    
+    
+
+
+    /*  */
+ 
     return 1;
 }

@@ -17,34 +17,35 @@ enum mode {
 };
 
 /* tftp message structure */
-typedef struct {
+typedef struct TFTP_DGRAM{
 
-    uint16_t opcode;// decide which kind of datagram is 
+    uint16_t opcode; // decide which kind of datagram is 
+                     // 2 bytes
 
     union {
 
         struct {
             uint16_t opcode; /* RRQ(1) or WRQ(2) */             
             uint8_t filename_and_mode[514]; // (longest) 512 bytes + 2 bytes for '\0'
-        } request;     
+        } request; // 516 bytes     
 
         struct {
             uint16_t opcode; /* DATA */
             uint16_t blocknum; // block#
             uint8_t data[BLOCK_LEN];
-        } data;
+        } data; // 516 bytes
 
         struct {
             uint16_t opcode; /* ACK */             
             uint16_t blocknum; // block# 2 bytes
-        } ack;
+        } ack; // 4 bytes
 
         struct {
             uint16_t opcode; /* ERROR */     
             uint16_t err_code;
             uint8_t err_msg[BLOCK_LEN];
-        } error;
-        
-    } datagram;
+        } error; // 516 bytes
 
-} tftp_dgram;
+    } datagram;// 516 bytes
+
+} tftp_dgram; // 518 bytes
