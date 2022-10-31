@@ -179,6 +179,7 @@ int download_file(char * serv_file) {
     int recvbytes;
     uint16_t tmp_opcode;
     uint16_t tmp_blocknum;
+    uint16_t cur_blocknum = 1;
 
     FILE *file_download;
     file_download = fopen(serv_file, "r"); // check if it exists already, if so, cover it.
@@ -190,6 +191,8 @@ int download_file(char * serv_file) {
 
 
     while(1) {
+        
+
         recvbytes = recvfrom(sockfd, &recvpkt.datagram, sizeof(recvpkt.datagram),
                         MSG_DONTWAIT, (struct sockaddr *)&servaddr, &servaddr_len);
 
@@ -211,12 +214,14 @@ int download_file(char * serv_file) {
                 /* Last packet */
                 printf("block# %d has been recieved... And it is the last block.\n", tmp_blocknum);
             }
-
-        } 
+            
+            
+        }
 
         ackpkt.opcode = ACK;
         ackpkt.datagram.ack.opcode = htons(ACK);
         ackpkt.datagram.ack.blocknum = tmp_blocknum;
+        cur_blocknum += 1;
     }
     return 1;
 }
