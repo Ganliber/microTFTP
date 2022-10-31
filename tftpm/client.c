@@ -16,7 +16,7 @@ int download_file(char * serv_file);
 
 /* Global Variables */
 struct sockaddr_in servaddr; // server info struct
-int sockfd, mode;   // socket fd for datagram transmission
+int sockfd, global_mode;   // socket fd for datagram transmission
                     // mode=1 netascii; mode=2 octet(default)
 socklen_t servaddr_len;
 
@@ -33,7 +33,7 @@ socklen_t servaddr_len;
 int main(int argc, char* argv[]) {
 
     char command[MAXLINE]; // Input command
-    mode = 1; // default value : octet (binary)
+    global_mode = 1; // default value : octet (binary)
 
     if(argc < 2) {
         printf("Usage: %s ip [port]\n",argv[0]);
@@ -160,7 +160,7 @@ int download_file(char * serv_file) {
     sendpkt.datagram.request.filename_and_mode[i++] = '\0';
     char *modestr;
 
-    if(mode==1) modestr = "NETASCII";
+    if(global_mode==1) modestr = "NETASCII";
     else modestr = "OCTET";
 
     while (*modestr!='\0') {
@@ -169,7 +169,7 @@ int download_file(char * serv_file) {
     }
     sendpkt.datagram.request.filename_and_mode[i] = '\0';
 
-    sendto(sockfd, &sendpkt.datagram, sizeof(sendpkt.datagram),
+    sendto(sockfd, &sendpkt.datagram.request, sizeof(sendpkt.datagram.request),
                     0, (struct sockaddr *)&servaddr, servaddr_len);
     
     
@@ -180,48 +180,59 @@ int download_file(char * serv_file) {
     uint16_t tmp_opcode;
     uint16_t tmp_blocknum;
     uint16_t cur_blocknum = 1;
+    ssize_t err_code;
 
     FILE *file_download;
-    file_download = fopen(serv_file, "r"); // check if it exists already, if so, cover it.
-    if (file_download == NULL) {
-        // it doesn't exist, so u need to create it.
-        file_download = fopen(serv_file, "w");
-    }
+    if(global_mode == 1)
+        file_download = fopen(serv_file, "a"); // text format and appendable
+    else if(global_mode == 2)
+        file_download = fopen(serv_file, "ab"); // binary format and appendable
 
-
+    // file_download = fopen(serv_file, "r"); // check if it exists already, if so, cover it.
+    // if (file_download == NULL) {
+    //     // it doesn't exist, so u need to create it.
+    // }
 
     while(1) {
-        
-
-        recvbytes = recvfrom(sockfd, &recvpkt.datagram, sizeof(recvpkt.datagram),
+        printf("### [DATA] Datagram ###");
+        recvbytes = recvfrom(sockfd, &recvpkt.datagram.data, sizeof(recvpkt.datagram.data),
                         MSG_DONTWAIT, (struct sockaddr *)&servaddr, &servaddr_len);
 
         if (recvbytes > 0 && recvbytes < 4) {
             printf("Bad packet recieved.\n");
             continue;
         } else {
-            tmp_opcode = recvpkt.datagram.data.opcode;
-            tmp_blocknum = recvpkt.datagram.data.blocknum;
+            tmp_opcode = ntohs(recvpkt.datagram.data.opcode);
+            tmp_blocknum = ntohs(recvpkt.datagram.data.blocknum);
             if(tmp_opcode != DATA) {
                 printf("Not proper data packet.\n");
                 continue;
             }       
-            if (recvbytes == DGRAM_SIZE) {
+            if (recvbytes >= 4 && tmp_blocknum == cur_blocknum && tmp_opcode == DATA) {
                 /* intermediate packets */
-                printf("Recieved => block# %d, size=%d ...\n", tmp_blocknum, recvbytes - 4);
-
-            } else if (recvbytes >= 4 && recvbytes < DGRAM_SIZE) {
-                /* Last packet */
-                printf("block# %d has been recieved... And it is the last block.\n", tmp_blocknum);
+                printf("Recieved => block# %d, size=%d ...\n", tmp_blocknum, recvbytes - 4);                
+                
+                err_code = fwrite(recvpkt.datagram.data.data,1,recvbytes - 4, file_download);
+                ackpkt.opcode = ACK;
+                ackpkt.datagram.ack.opcode = htons(ACK);
+                ackpkt.datagram.ack.blocknum = tmp_blocknum;
+                //ACK
+                sendto(sockfd, &ackpkt.datagram.ack, sizeof(ackpkt.datagram.ack), 0, (struct sockaddr*)&servaddr, servaddr_len);
+                if (err_code != recvbytes - 4) {
+                    printf("ERROR: fwrite triggered an writing error!\n");
+                    close(download_file);
+                    perr_exit(0);
+                }
+                if (recvbytes < DGRAM_SIZE) {
+                    /* Last packet */
+                    printf("### It is the last block. ###\n");
+                    break;
+                }
             }
-            
-            
         }
 
-        ackpkt.opcode = ACK;
-        ackpkt.datagram.ack.opcode = htons(ACK);
-        ackpkt.datagram.ack.blocknum = tmp_blocknum;
         cur_blocknum += 1;
     }
+    close(download_file);
     return 1;
 }
