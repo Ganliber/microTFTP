@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <string.h> // memset
+#include <sys/time.h> // timeval struct for check if it is timeout
 
 int hint();
 int upload_file(char * cli_file, char * server_ip);

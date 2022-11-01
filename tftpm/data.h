@@ -5,6 +5,7 @@
 #define BLOCK_LEN 512
 #define MAXLINE 512 // longest instrument in CLI
 #define DGRAM_SIZE 516
+#define TIME_OUT 15 // timeout is set 15s
 
 /* tftp opcode mnemonic */
 enum opcode {

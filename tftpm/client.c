@@ -1,4 +1,5 @@
 #include "client.h"
+#include <sys/time.h>
 
 /* Global Variables */
 struct sockaddr_in servaddr; // server info struct
@@ -28,9 +29,19 @@ int main(int argc, char* argv[]) {
         printf("The default port is 69.\n");
         return 0;
     }
-  
 
+    // Timeout handler 
+    //struct timeval timeout = {TIME_OUT,0}; // 15s timeout
     sockfd = Socket(AF_INET, SOCK_DGRAM, 0); // fd recieved from socket, Socket contains error handler
+
+    /*
+    * Before sendto
+    *   struct timeval timeout = {TIME_OUT,0}; // 15s timeout
+    *   int ret=setsockopt(sockfd,SOL_SOCKET,SO_SNDTIMEO,(const char*)&timeout,sizeof(timeout));
+    * Before recvfrom
+    *   struct timeval timeout = {TIME_OUT,0}; // 15s timeout
+    *   int ret=setsockopt(sockfd,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
+    */
 
     //test
     printf("The connecting ip addr is: %s\n", argv[1]);
@@ -62,6 +73,7 @@ int main(int argc, char* argv[]) {
         if (ins == NULL) {
             continue;
         } else if (strcmp(ins, "quit")==0 || strcmp(ins, "q")==0) {
+            Close(sockfd);
             exit(0);printf("%s\n", ins);
         } else if (strcmp(ins, "help")==0 || strcmp(ins, "h")==0) {
             hint();
@@ -72,6 +84,7 @@ int main(int argc, char* argv[]) {
             } else {
                 // printf("%s\n", ins);
                 download_file(ins,argv[1]);
+                exit(0);
             }
         } else if (strcmp(ins, "put")==0 || strcmp(ins, "upload")==0) {
             ins = strtok(NULL, " \t\n");
@@ -79,6 +92,7 @@ int main(int argc, char* argv[]) {
                 printf("\n\033[31m**[error : missing remote file name.]**\033[0m\n\n");
             } else {
                 upload_file(ins, argv[1]);
+                exit(0);
             }
         } else if (strcmp(ins, "shell")==0) {
             /*  
@@ -106,6 +120,27 @@ int main(int argc, char* argv[]) {
             }
             shell[index] = '\0';
             system(shell);
+        } else if (strcmp(ins, "checkmode")==0) {
+            char * modestr;
+            if(global_mode == 1) 
+                modestr = "NETASCII";
+            else
+                modestr = "OCTET";
+            printf("The current mode to transfer files is \033[31m%s\033[33m\n", modestr);
+        } else if (strcmp(ins, "setmode")==0) {
+            ins = strtok(NULL, " \t\n");
+            char * modestr;
+            if (strcmp(ins, "1")==0) {
+                global_mode = 1;
+                modestr = "NETASCII";
+            } else if (strcmp(ins, "2")==0) {
+                global_mode = 2;
+                modestr = "OCTET";
+            } else {
+                printf("setmode [1|2]\t\t --- NETASCII: mode=1 OCTET: mode=2\n");
+                continue;
+            }
+            printf("The current mode to transfer files has been changed to \033[31m%s\033[33m\n", modestr);
         }
     }
     return 0;
@@ -117,7 +152,7 @@ int hint() {
     printf("usage: \n\n");
     printf("help\t\t\t\t --- check out the help guide.\n\n");
     printf("checkmode\t\t\t --- check the transmission mode.\n\n");
-    printf("setmode\t\t\t --- set the value of transmission mode.\n \t\t\t\t     NETASCII:\tmode = 1\n\t\t\t\t     OOCTET:\tmode = 2\n\n");
+    printf("setmode [1|2]\t\t\t --- set the value of transmission mode.\n \t\t\t\t     NETASCII:\tmode = 1\n\t\t\t\t     OOCTET:\tmode = 2\n\n");
     printf("put | upload [local file]\t --- upload local file to remote server.\n\n");
     printf("get | download [remote file]\t --- download file from remote server.\n\n");
     printf("shell [shell instruction]\t --- execute shell instructions.\n\n");
@@ -128,7 +163,9 @@ int hint() {
 /// @param clifile 
 /// @return success code: 1 for success & 0 for failure 
 int upload_file(char *cli_file, char *server_ip) {
+    //reload_socket();
     tftp_dgram sendpkt, ackpkt, recvpkt;
+    int size = sizeof(sendpkt);
 
     if(cli_file == NULL) {
         return -1;
@@ -153,9 +190,10 @@ int upload_file(char *cli_file, char *server_ip) {
     }
     sendpkt.datagram.request.filename_and_mode[i] = '\0';
 
-    ssize_t res = sendto(sockfd, &sendpkt, sizeof(sendpkt), 0, (struct sockaddr *)&servaddr, servaddr_len);
+    ssize_t res = sendto(sockfd, &sendpkt, size, 0, (struct sockaddr *)&servaddr, servaddr_len);
 
     if(res == -1) {
+        
         perr_exit("Sending tftp datagram failed!\n");
     }
 
@@ -175,9 +213,26 @@ int upload_file(char *cli_file, char *server_ip) {
         fp = fopen(cli_file, "rb");
     }
 
+    int timeout_number = 0;// if time of timeout is above 3, exit.
     while(1) {
+        struct timeval timeout = {TIME_OUT,0}; // 15s timeout
+        int ret=setsockopt(sockfd,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
         recvbytes = recvfrom(sockfd, &recvpkt, sizeof(recvpkt), 0, 
                         (struct sockaddr *)&servaddr, &servaddr_len);
+
+        if(recvbytes == -1 && errno == EAGAIN) {
+            timeout_number += 1;
+            if (timeout_number > 3) {
+                perr_exit("\n\033[31mTimeout for third time. Sorry we have to terminate this transmission, please wait for a while and try again.\n\033[33m\n");
+            }
+            printf("\n\033[31mTimeout. Try to upload again ...\n\n\033[33m");
+            ssize_t res = sendto(sockfd, &sendpkt, size, 0, (struct sockaddr *)&servaddr, servaddr_len);
+            if(res == -1) {
+                perr_exit("Sending tftp datagram failed!\n");
+            }
+            continue;
+        }
+
         if (recvbytes < 4) {
             perr_exit("Bad packet recieved.\n");
         }
@@ -194,6 +249,7 @@ int upload_file(char *cli_file, char *server_ip) {
             } else if (tmp_blocknum != 0 && tmp_blocknum == cur_blocknum) {
                 printf("block \033[31m#%d\033[33m acceptance confirmed => ^_^\n\n", cur_blocknum); 
             } else {
+                printf("%d\n",tmp_blocknum);
                 //printf("\n\033[31m**[ ACK ERROR ]**\033[0m\n\n");
                 perr_exit("\n\033[31m**[ ACK ERROR ]**\033[0m\n\n"); // EXIT !!!
                 //continue;
@@ -201,7 +257,7 @@ int upload_file(char *cli_file, char *server_ip) {
             /* Send block */
             cur_blocknum += 1;
             ssize_t err_code;
-            memset(&sendpkt, 0, sizeof(sendpkt)); // important
+            memset(&sendpkt, '\0', sizeof(sendpkt)); // important
             // sending block
             sendpkt.opcode = htons(DATA);
             sendpkt.datagram.data.blocknum = htons(cur_blocknum);
@@ -209,14 +265,19 @@ int upload_file(char *cli_file, char *server_ip) {
             //printf("*** fread %ld bytes ***\n", err_code);
 
             if (err_code < MAXLINE) {
-                printf("sending last block \033[31m#%d\033[33m ...\n", cur_blocknum);
+                printf("sending last block (size=%ld) \033[31m#%d\033[33m ...\n", err_code,cur_blocknum);
                 //printf("WTF ???\n");
                 last_blocknum = cur_blocknum;
+                if (err_code == 0)
+                    size = 4;
+                else
+                    size = 4 + err_code;
             } else {
                 // res == MAXLINE
                 printf("sending block \033[31m#%d\033[33m ...\n", cur_blocknum);
+                //sendto(sockfd, &sendpkt, sizeof(sendpkt), 0, (struct sockaddr *)&servaddr, servaddr_len);
             }
-            sendto(sockfd, &sendpkt, sizeof(sendpkt), 0, (struct sockaddr *)&servaddr, servaddr_len);
+            sendto(sockfd, &sendpkt, size, 0, (struct sockaddr *)&servaddr, servaddr_len);
         } else {
             printf("\n\033[31m**[ ACK ERROR: datagram accepted type is %d. ]**\033[0m\n\n", tmp_opcode);
         }
@@ -283,9 +344,25 @@ int download_file(char * serv_file, char* server_ip) {
         file_download = fopen(serv_file, "wb"); // binary format and appendable
 
     printf("\n### Downloading \033[33mfrom \033[37m%s \033[33m###\n\n", server_ip);
+    
+    int timeout_number = 0;// if time of timeout is above 3, exit.
+    int ack_size = 4;
+    
     while(1) {
-        recvbytes = recvfrom(sockfd, &recvpkt, sizeof(recvpkt),
-                        0, (struct sockaddr *)&servaddr, &servaddr_len);
+        struct timeval timeout = {TIME_OUT,0}; // 15s timeout
+        int ret=setsockopt(sockfd,SOL_SOCKET,SO_RCVTIMEO,(const char*)&timeout,sizeof(timeout));
+        recvbytes = recvfrom(sockfd, &recvpkt, sizeof(recvpkt), 0, 
+                        (struct sockaddr *)&servaddr, &servaddr_len);
+
+        if(recvbytes == -1 && errno == EAGAIN) {
+            timeout_number += 1;
+            if (timeout_number >= 3) {
+                perr_exit("\n\033[31mTimeout for third time. Sorry we have to terminate this transmission, please wait for a while and try again.\n\033[33m\n");
+            }
+            printf("\n\033[31mTimeout. Try to upload again ...\n\n\033[33m");
+            sendto(sockfd, &ackpkt, ack_size, 0, (struct sockaddr*)&servaddr, servaddr_len);
+            continue;
+        }
 
         if (recvbytes < 4) {
             perr_exit("Bad packet recieved.\n");
@@ -325,7 +402,7 @@ int download_file(char * serv_file, char* server_ip) {
                     ackpkt.opcode = htons(ACK);
                     ackpkt.datagram.ack.blocknum = htons(tmp_blocknum);
                     //ACK
-                    sendto(sockfd, &ackpkt, sizeof(ackpkt), 0, (struct sockaddr*)&servaddr, servaddr_len);             
+                    sendto(sockfd, &ackpkt, ack_size, 0, (struct sockaddr*)&servaddr, servaddr_len);           
                     break;
                 } else {
                     printf("Block \033[31m#%d\033[33m recieved => size = %d bytes ...\n", tmp_blocknum, recvbytes - 4);
@@ -334,7 +411,7 @@ int download_file(char * serv_file, char* server_ip) {
                     ackpkt.opcode = htons(ACK);
                     ackpkt.datagram.ack.blocknum = htons(tmp_blocknum);
                     //ACK
-                    sendto(sockfd, &ackpkt, sizeof(ackpkt), 0, (struct sockaddr*)&servaddr, servaddr_len);             
+                    sendto(sockfd, &ackpkt, ack_size, 0, (struct sockaddr*)&servaddr, servaddr_len);             
                     cur_blocknum += 1;
                     continue;
                 }
