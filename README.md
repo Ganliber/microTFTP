@@ -33,7 +33,7 @@ TFTP Formats
    DATA  | 03    |   Block #  |    Data    |
           ---------------------------------
           2 bytes    2 bytes
-          -------------------
+          --------------------
    ACK   | 04    |   Block #  |
           --------------------
           2 bytes  2 bytes        string    1 byte

@@ -141,6 +141,8 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             printf("The current mode to transfer files has been changed to \033[31m%s\033[33m\n", modestr);
+        } else {
+            printf("Invalid command, please input \"help\" to check.\n");
         }
     }
     return 0;
