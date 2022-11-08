@@ -1,5 +1,4 @@
 #include "client.h"
-#include <sys/time.h>
 
 /* Global Variables */
 struct sockaddr_in servaddr; // server info struct
@@ -83,7 +82,19 @@ int main(int argc, char* argv[]) {
                 printf("\n\033[31m**[error : missing remote file name.]**\033[0m\n\n");
             } else {
                 // printf("%s\n", ins);
-                download_file(ins,argv[1]);
+                struct timeval start;
+                struct timeval end;
+
+                gettimeofday(&start,0);
+                
+                int file_size = download_file(ins,argv[1]);
+                
+                gettimeofday(&end,0);
+
+                double interval  = 1000000*(end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec); // 's'
+                //printf("interval %f μs", interval);
+                double throughput = 1000 * (file_size/interval); // byte/s
+                printf("\033[31mrecieved file size: %d KB, throughput: %.1f KB/s\033[0m\n", file_size/1000, throughput);
                 exit(0);
             }
         } else if (strcmp(ins, "put")==0 || strcmp(ins, "upload")==0) {
@@ -91,7 +102,19 @@ int main(int argc, char* argv[]) {
             if(ins == NULL) {
                 printf("\n\033[31m**[error : missing remote file name.]**\033[0m\n\n");
             } else {
-                upload_file(ins, argv[1]);
+                struct timeval start;
+                struct timeval end;
+
+                gettimeofday(&start,0);
+                
+                int file_size = upload_file(ins, argv[1]);
+
+                gettimeofday(&end, 0);
+
+                double interval  = 1000000*(end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec); // 's'
+                //printf("interval %f μs", interval);
+                double throughput = (1000 * file_size)/interval; // byte/s
+                printf("\033[31mrecieved file size: %d KB, throughput: %.1f KB/s\033[0m\n", file_size/1000, throughput);
                 exit(0);
             }
         } else if (strcmp(ins, "shell")==0) {
@@ -165,6 +188,7 @@ int hint() {
 /// @param clifile 
 /// @return success code: 1 for success & 0 for failure 
 int upload_file(char *cli_file, char *server_ip) {
+    int file_size = 0;
     //reload_socket();
     tftp_dgram sendpkt, ackpkt, recvpkt;
     int size = sizeof(sendpkt);
@@ -194,8 +218,7 @@ int upload_file(char *cli_file, char *server_ip) {
 
     ssize_t res = sendto(sockfd, &sendpkt, size, 0, (struct sockaddr *)&servaddr, servaddr_len);
 
-    if(res == -1) {
-        
+    if(res == -1) {    
         perr_exit("Sending tftp datagram failed!\n");
     }
 
@@ -280,13 +303,14 @@ int upload_file(char *cli_file, char *server_ip) {
                 //sendto(sockfd, &sendpkt, sizeof(sendpkt), 0, (struct sockaddr *)&servaddr, servaddr_len);
             }
             sendto(sockfd, &sendpkt, size, 0, (struct sockaddr *)&servaddr, servaddr_len);
+            file_size += size;
         } else {
             printf("\n\033[31m**[ ACK ERROR: datagram accepted type is %d. ]**\033[0m\n\n", tmp_opcode);
         }
     }
     printf("\n###\033[32m File Upload Success\033[33m ###\n\n");
     fclose(fp);
-    return 1;//succeed
+    return file_size;//succeed
 }
 
 /// @brief 
@@ -294,6 +318,7 @@ int upload_file(char *cli_file, char *server_ip) {
 /// @param cli_file 
 /// @return err_code
 int download_file(char * serv_file, char* server_ip) {
+    int file_size = 0;
     tftp_dgram sendpkt, ackpkt, recvpkt;
     
     //printf("The size of tftp packet is: %lu\n",sizeof(sendpkt));
@@ -392,7 +417,7 @@ int download_file(char * serv_file, char* server_ip) {
                 err_code = fwrite(&recvpkt.datagram.data.data,1,recvbytes - 4, file_download);
                 
                 //printf("*** fwrite %ld bytes ***\n", err_code);
-                
+                file_size += recvbytes;
                 if (err_code != recvbytes - 4) {
                     printf("ERROR: fwrite triggered an writing error!\n");
                     fclose(file_download);
@@ -422,5 +447,5 @@ int download_file(char * serv_file, char* server_ip) {
     }
     printf("\n###\033[32m File Download Success\033[33m ###\n\n");
     fclose(file_download);
-    return 1;
+    return file_size;
 }
