@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Timeout handler 
-    //struct timeval timeout = {TIME_OUT,0}; // 15s timeout
+    // struct timeval timeout = {TIME_OUT,0}; // 15s timeout
     sockfd = Socket(AF_INET, SOCK_DGRAM, 0); // fd recieved from socket, Socket contains error handler
 
     /*
@@ -171,8 +171,8 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-/// @brief 
-/// @return 
+/// @brief help hints
+/// @return void
 int hint() {
     printf("usage: \n\n");
     printf("help\t\t\t\t --- check out the help guide.\n\n");
